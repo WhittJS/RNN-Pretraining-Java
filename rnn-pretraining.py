@@ -38,7 +38,7 @@ def tokenizaton_vocab(methods):
 
 if __name__ == "__main__":
 
-    df = pd.concat([pd.read_csv("sample-pt_1.csv"), pd.read_csv("sample-pt_1.csv")], ignore_index=True)
+    df = pd.concat([pd.read_csv("sample-pt_1.csv"), pd.read_csv("sample-pt_2.csv")], ignore_index=True)
 
     print("Dataset read. Preprocessing... ")
 
