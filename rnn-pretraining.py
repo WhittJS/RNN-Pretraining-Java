@@ -200,7 +200,7 @@ if __name__ == "__main__":
     output_dim = vocab_size
     n_layers = 16
     learning_rate = 0.001
-    epochs = 5
+    epochs = 10
     dropout = 0.2
 
     model = VanillaRNN(vocab_size, embedding_dim, hidden_dim, output_dim, n_layers, dropout).to(device)
