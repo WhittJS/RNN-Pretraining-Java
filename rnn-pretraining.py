@@ -25,7 +25,7 @@ def generate_vocab_with_completion_n(methods, max_vocab_size=10000):
     Generates a vocabulary dictionary from a list of tokenized methods,
     ensuring that '[COMPLETION_N]' appears exactly once.
     The vocabulary is capped at the most common `max_vocab_size` tokens.
-    
+
     Args:
         methods (list of list of str): Tokenized Java methods.
         max_vocab_size (int): Maximum number of tokens to keep.
@@ -36,12 +36,12 @@ def generate_vocab_with_completion_n(methods, max_vocab_size=10000):
 
     token_counts = Counter(token for seq in methods for token in seq)
     most_common_tokens = [token for token, _ in token_counts.most_common(max_vocab_size - 2)]  # Reserve 2 slots
-    
+
     special_tokens = {"[COMPLETION_N]", "<PAD>"}
     unique_tokens = list(special_tokens.union(most_common_tokens))
-    
+
     vocab = {token: idx for idx, token in enumerate(unique_tokens)}
-    
+
     return vocab
 
 
@@ -100,21 +100,21 @@ class CodeCompletionDataset(Dataset):
 
 
 class VanillaRNN(nn.Module):
-	def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, n_layers, dropout=0):
-		super(VanillaRNN, self).__init__()
-		self.embedding = nn.Embedding(vocab_size, embedding_dim)
-		self.rnn = nn.RNN(embedding_dim, hidden_dim, n_layers, batch_first=True)
-		self.fc = nn.Linear(hidden_dim, output_dim)
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, n_layers, dropout=0):
+        super(VanillaRNN, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.rnn = nn.RNN(embedding_dim, hidden_dim, n_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, output_dim)
 
-	def forward(self, x):
+    def forward(self, x):
 
-		if isinstance(x, int):  # If x is an integer, convert it
-			x = torch.tensor([x], dtype=torch.long)  # Convert to tensor
+        if isinstance(x, int):  # If x is an integer, convert it
+            x = torch.tensor([x], dtype=torch.long)  # Convert to tensor
 
-		embedded = self.embedding(x)
-		output, hidden = self.rnn(embedded)
-		out = self.fc(output)
-		return out, hidden
+        embedded = self.embedding(x)
+        output, hidden = self.rnn(embedded)
+        out = self.fc(output)
+        return out, hidden
 
 
 def train_model(model, dataloader, optimizer, criterion, epochs):
@@ -134,7 +134,6 @@ def train_model(model, dataloader, optimizer, criterion, epochs):
             optimizer.zero_grad()
 
             inputs, targets = inputs.to(device), targets.to(device)
-
 
             outputs, _ = model(inputs)
 
@@ -189,24 +188,14 @@ if __name__ == "__main__":
     input_methods = preprocess(input_dataset)
     target_methods = preprocess(target_dataset)
 
-    train_input_methods, test_input_methods = train_test_split(input_methods, test_size=0.1, random_state=42)
-    train_input_methods, val_input_methods = train_test_split(train_input_methods, test_size=0.1111, random_state=42)
-
-    train_target_methods, test_target_methods = train_test_split(target_methods, test_size=0.1, random_state=42)
-    train_target_methods, val_target_methods = train_test_split(train_target_methods, test_size=0.1111, random_state=42)
-
     vocab = generate_vocab_with_completion_n(overall_methods)
     vocab_size = len(vocab)
     print(f"Vocab Size: {vocab_size}")
 
-    datasetTrain = CodeCompletionDataset(train_input_methods, train_target_methods, vocab, seq_length=100)
-    datasetTest = CodeCompletionDataset(test_input_methods, test_target_methods, vocab, seq_length=100)
-    datasetEval = CodeCompletionDataset(val_input_methods, val_target_methods, vocab, seq_length=100)
+    datasetTrain = CodeCompletionDataset(input_methods, target_methods, vocab, seq_length=100)
 
     dataloader_train = DataLoader(datasetTrain, batch_size=32, shuffle=True)
-    dataloader_test = DataLoader(datasetTest, batch_size=32, shuffle=True)
-    dataloader_eval = DataLoader(datasetEval, batch_size=32, shuffle=True)
-	
+
     embedding_dim = 64
     hidden_dim = 256
     output_dim = vocab_size
@@ -214,9 +203,9 @@ if __name__ == "__main__":
     learning_rate = 0.001
     epochs = 5
     dropout = 0.2
-	
+
     model = VanillaRNN(vocab_size, embedding_dim, hidden_dim, output_dim, n_layers, dropout).to(device)
-	
+
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     criterion = nn.CrossEntropyLoss(ignore_index=vocab["<PAD>"]).to(device)
 
