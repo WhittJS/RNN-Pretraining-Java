@@ -3,7 +3,10 @@ from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import tqdm
 from torch.utils.data import Dataset, DataLoader
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def preprocess(df):
@@ -93,6 +96,79 @@ class CodeCompletionDataset(Dataset):
         return sequence[:max_len] + [self.pad_token_id] * max(0, max_len - len(sequence))
 
 
+class VanillaRNN(nn.Module):
+	def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim, n_layers, dropout=0):
+		super(VanillaRNN, self).__init__()
+		self.embedding = nn.Embedding(vocab_size, embedding_dim)
+		self.rnn = nn.RNN(embedding_dim, hidden_dim, n_layers, batch_first=True)
+		self.fc = nn.Linear(hidden_dim, output_dim)
+
+	def forward(self, x):
+
+		if isinstance(x, int):  # If x is an integer, convert it
+			x = torch.tensor([x], dtype=torch.long)  # Convert to tensor
+
+		embedded = self.embedding(x)
+		output, hidden = self.rnn(embedded)
+		out = self.fc(output)
+		return out, hidden
+
+
+def train_model(model, dataloader, optimizer, criterion, epochs):
+	"""Train the model and display step-wise training details."""
+	model.train()
+	display_interval = 100
+
+	for epoch in range(epochs):
+		epoch_loss = 0
+		total_correct = 0
+		total_samples = 0
+
+		progress_bar = tqdm.tqdm(enumerate(dataloader), total=len(dataloader), desc=f"Epoch {epoch+1}")
+
+		for batch_idx, (inputs, targets) in progress_bar:
+			optimizer.zero_grad()
+
+			inputs, targets = inputs.to(device), targets.to(device)
+
+
+			outputs, _ = model(inputs)
+
+			# Compute loss
+			loss = criterion(outputs.reshape(-1, outputs.shape[-1]), targets.reshape(-1))
+			loss.backward()
+			optimizer.step()
+
+			# Compute accuracy (if applicable)
+			predictions = outputs.argmax(dim=-1)
+			correct = (predictions == targets).sum().item()
+			total = targets.numel()
+
+			# Occasionally print input, target, and prediction for interpretation
+			if batch_idx % display_interval == 0:
+				print(f"Input: {inputs[0].cpu().numpy()}")
+				print(f"Target: {targets[0].cpu().numpy()}")
+
+			batch_accuracy = correct / total
+			total_correct += correct
+			total_samples += total
+
+			epoch_loss += loss.item()
+
+			# Update progress bar with loss and accuracy
+			progress_bar.set_postfix(loss=f"{loss.item():.4f}", accuracy=f"{batch_accuracy:.2%}")
+
+		# Compute epoch-level metrics
+		avg_loss = epoch_loss / len(dataloader)
+		avg_accuracy = total_correct / total_samples
+
+		print(f"Epoch {epoch+1} - Loss: {avg_loss:.4f}, Accuracy: {avg_accuracy:.2%}")
+
+	# Save the trained model
+	torch.save(model.state_dict(), "models/dl_code_completion.pth")
+	print("Model saved successfully as rnn_code_completion.pth")
+
+
 if __name__ == "__main__":
 
     df = pd.concat([pd.read_csv("sample-pt_1.csv"), pd.read_csv("sample-pt_2.csv")], ignore_index=True)
@@ -115,3 +191,26 @@ if __name__ == "__main__":
     vocab = generate_vocab_with_completion_n(overall_methods)
     vocab_size = len(vocab)
     print(f"Vocab Size: {vocab_size}")
+
+    datasetTrain = CodeCompletionDataset(train_input_methods, train_target_methods, vocab, seq_length=100)
+    datasetTest = CodeCompletionDataset(test_input_methods, test_target_methods, vocab, seq_length=100)
+    datasetEval = CodeCompletionDataset(val_input_methods, val_target_methods, vocab, seq_length=100)
+
+    dataloader_train = DataLoader(datasetTrain, batch_size=32, shuffle=True)
+    dataloader_test = DataLoader(datasetTest, batch_size=32, shuffle=True)
+    dataloader_eval = DataLoader(datasetEval, batch_size=32, shuffle=True)
+	
+    embedding_dim = 64
+    hidden_dim = 256
+    output_dim = vocab_size
+    n_layers = 16
+    learning_rate = 0.001
+    epochs = 5
+    dropout = 0.2
+	
+    model = VanillaRNN(vocab_size, embedding_dim, hidden_dim, output_dim, n_layers, dropout).to(device)
+	
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    criterion = nn.CrossEntropyLoss(ignore_index=vocab["<PAD>"]).to(device)
+
+    train_model(model, dataloader_train, optimizer, criterion, epochs)
